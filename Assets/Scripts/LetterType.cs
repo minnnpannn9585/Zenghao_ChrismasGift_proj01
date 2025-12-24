@@ -1,9 +1,10 @@
 public enum LetterType
 {
     None,   // 空格子
+    S,
+    H,
     A,
-    L,
-    I,
-    C,
-    E
+    R,
+    O,
+    N
 }

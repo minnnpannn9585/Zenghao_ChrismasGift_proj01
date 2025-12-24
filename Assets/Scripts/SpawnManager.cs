@@ -4,11 +4,12 @@ public class SpawnManager : MonoBehaviour
 {
     public static SpawnManager Instance;
 
+    public TetrominoBlock blockPrefab_S;
+    public TetrominoBlock blockPrefab_H;
     public TetrominoBlock blockPrefab_A;
-    public TetrominoBlock blockPrefab_L;
-    public TetrominoBlock blockPrefab_I;
-    public TetrominoBlock blockPrefab_C;
-    public TetrominoBlock blockPrefab_E;
+    public TetrominoBlock blockPrefab_R;
+    public TetrominoBlock blockPrefab_O;
+    public TetrominoBlock blockPrefab_N;
 
     public float initialSpawnDelay = 1f;
 
@@ -16,7 +17,6 @@ public class SpawnManager : MonoBehaviour
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
-        ValidatePrefabs();
     }
 
     private void Start()
@@ -24,47 +24,39 @@ public class SpawnManager : MonoBehaviour
         Invoke(nameof(SpawnNewBlock), initialSpawnDelay);
     }
 
-    // 【修改6】生成位置改为网格顶部行（Y=14，即gridHeight-1）
+    // Spawn at top row (Y = 0) and second column from left (X = 1). Fallback to X=0 if grid is too narrow.
     public void SpawnNewBlock()
     {
         if (GridManager.Instance.IsGameOver()) return;
 
-        int randomX = Random.Range(0, GridManager.Instance.gridWidth);
-        int spawnY = GridManager.Instance.gridHeight - 1; // 顶部行（Y=14）
+        int spawnX = (GridManager.Instance.gridWidth > 1) ? 6 : 0; // second cell from left (0-based)
+        int spawnY = 0; // top row
 
-        LetterType randomLetter = (LetterType)Random.Range(1, 6);
+        LetterType randomLetter = (LetterType)Random.Range(1, 7);
         TetrominoBlock targetPrefab = GetPrefabByLetter(randomLetter);
 
-        // 检查生成位置是否为空（顶部行是否被占）
-        if (!GridManager.Instance.IsCellEmpty(randomX, spawnY))
+        // Check spawn position is empty
+        if (!GridManager.Instance.IsCellEmpty(spawnX, spawnY))
         {
             GameManager.Instance.GameOver();
             return;
         }
 
         TetrominoBlock newBlock = Instantiate(targetPrefab, transform);
-        newBlock.Initialize(randomX, spawnY, randomLetter);
+        newBlock.Initialize(spawnX, spawnY, randomLetter);
     }
 
     private TetrominoBlock GetPrefabByLetter(LetterType letter)
     {
         switch (letter)
         {
+            case LetterType.S: return blockPrefab_S;
+            case LetterType.H: return blockPrefab_H;
             case LetterType.A: return blockPrefab_A;
-            case LetterType.L: return blockPrefab_L;
-            case LetterType.I: return blockPrefab_I;
-            case LetterType.C: return blockPrefab_C;
-            case LetterType.E: return blockPrefab_E;
+            case LetterType.R: return blockPrefab_R;
+            case LetterType.O: return blockPrefab_O;
+            case LetterType.N: return blockPrefab_N;
             default: throw new System.Exception($"未找到字母{letter}对应的预制体！");
         }
-    }
-
-    private void ValidatePrefabs()
-    {
-        if (blockPrefab_A == null) Debug.LogError("SpawnManager: 未赋值A字母预制体！");
-        if (blockPrefab_L == null) Debug.LogError("SpawnManager: 未赋值L字母预制体！");
-        if (blockPrefab_I == null) Debug.LogError("SpawnManager: 未赋值I字母预制体！");
-        if (blockPrefab_C == null) Debug.LogError("SpawnManager: 未赋值C字母预制体！");
-        if (blockPrefab_E == null) Debug.LogError("SpawnManager: 未赋值E字母预制体！");
     }
 }

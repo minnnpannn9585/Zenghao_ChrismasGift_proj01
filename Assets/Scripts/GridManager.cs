@@ -10,7 +10,7 @@ public class GridManager : MonoBehaviour
     public float cellSize = 1f;
 
     private LetterType[,] grid;
-    // 网格原点：左上角（X居中，Y为网格顶部）
+    
     private Vector2 gridOrigin;
     private Dictionary<Vector2Int, TetrominoBlock> gridToBlock = new Dictionary<Vector2Int, TetrominoBlock>();
 
@@ -104,23 +104,38 @@ public class GridManager : MonoBehaviour
 
     public void CheckForElimination()
     {
-        // 遍历所有行（Y从0到14，0是顶部，14是底部）
-        for (int y = 0; y < gridHeight; y++)
+        // Keep scanning until no eliminations occur (handle chain reactions after drops)
+        bool eliminatedThisPass;
+        do
         {
-            for (int x = 0; x <= gridWidth - 5; x++)
+            eliminatedThisPass = false;
+            for (int y = 0; y < gridHeight; y++)
             {
-                if (grid[x, y] == LetterType.A &&
-                    grid[x+1, y] == LetterType.L &&
-                    grid[x+2, y] == LetterType.I &&
-                    grid[x+3, y] == LetterType.C &&
-                    grid[x+4, y] == LetterType.E)
+                for (int x = 0; x <= gridWidth - 6; x++)
                 {
-                    EliminateBlocks(x, y, 5);
-                    GameManager.Instance.AddScore(10);
-                    DropBlocksAbove(y);
+                    if (grid[x, y] == LetterType.S &&
+                        grid[x+1, y] == LetterType.H &&
+                        grid[x+2, y] == LetterType.A &&
+                        grid[x+3, y] == LetterType.R &&
+                        grid[x+4, y] == LetterType.O &&
+                        grid[x + 5, y] == LetterType.N
+
+                        )
+                    {
+                        GetComponent<AudioSource>().Play();
+                        EliminateBlocks(x, y, 6);
+                        GameManager.Instance.AddScore(1);
+                        DropBlocksAbove(y);
+
+                        // an elimination happened — break to restart full scan
+                        eliminatedThisPass = true;
+                        break;
+                    }
                 }
+
+                if (eliminatedThisPass) break;
             }
-        }
+        } while (eliminatedThisPass);
     }
 
     private void EliminateBlocks(int startX, int y, int count)
@@ -134,7 +149,46 @@ public class GridManager : MonoBehaviour
                 RemoveBlock(x, y);
                 Destroy(block.gameObject);
             }
+            else
+            {
+                // Ensure grid state is cleared even when block object is missing
+                grid[x, y] = LetterType.None;
+            }
         }
+    }
+
+    // Atomic move to keep grid[] and gridToBlock consistent while moving a block
+    public bool MoveBlock(int fromX, int fromY, int toX, int toY)
+    {
+        // bounds check
+        if (fromX < 0 || fromX >= gridWidth || fromY < 0 || fromY >= gridHeight) return false;
+        if (toX < 0 || toX >= gridWidth || toY < 0 || toY >= gridHeight) return false;
+
+        LetterType letter = grid[fromX, fromY];
+        if (letter == LetterType.None) return false;
+        if (!IsCellEmpty(toX, toY)) return false;
+
+        TetrominoBlock block = GetBlockAtGridPosition(fromX, fromY);
+
+        // clear source
+        grid[fromX, fromY] = LetterType.None;
+        UnregisterBlock(fromX, fromY);
+
+        // set target
+        grid[toX, toY] = letter;
+        if (block != null)
+        {
+            RegisterBlock(block, toX, toY);
+            // update block's internal coords and transform
+            block.SetGridPosition(toX, toY);
+            block.transform.position = GridToWorldPosition(toX, toY);
+        }
+        else
+        {
+            // No block object present — keep grid value but no mapping (shouldn't normally happen).
+        }
+
+        return true;
     }
 
     // ========== 核心修改4：消除后上方方块下落逻辑 ==========
@@ -145,22 +199,23 @@ public class GridManager : MonoBehaviour
         {
             for (int x = 0; x < gridWidth; x++)
             {
-                if (grid[x, y] != LetterType.None)
-                {
-                    // 找到可下落的最低位置（Y更大的方向，即向下）
-                    int targetY = y;
-                    while (targetY + 1 < gridHeight && IsCellEmpty(x, targetY + 1))
-                        targetY++;
+                LetterType letter = grid[x, y];
+                if (letter == LetterType.None) continue;
 
-                    if (targetY != y)
+                // 找到可下落的最低位置（Y更大的方向，即向下）
+                int targetY = y;
+                while (targetY + 1 < gridHeight && IsCellEmpty(x, targetY + 1))
+                    targetY++;
+
+                if (targetY != y)
+                {
+                    // Use atomic MoveBlock to avoid transient inconsistencies
+                    bool moved = MoveBlock(x, y, x, targetY);
+                    if (!moved)
                     {
-                        TetrominoBlock block = GetBlockAtGridPosition(x, y);
-                        if (block != null)
-                        {
-                            RemoveBlock(x, y);
-                            AddBlock(x, targetY, grid[x, y], block);
-                            block.transform.position = GridToWorldPosition(x, targetY);
-                        }
+                        // If move failed for some reason, clear the stale source cell to keep consistency
+                        grid[x, y] = LetterType.None;
+                        UnregisterBlock(x, y);
                     }
                 }
             }
@@ -176,7 +231,7 @@ public class GridManager : MonoBehaviour
         return false;
     }
 
-    // Gizmos绘制网格（可视化验证）
+    //Gizmos绘制网格（可视化验证)
     private void OnDrawGizmos()
     {
         if (grid == null) return;

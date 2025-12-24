@@ -4,6 +4,9 @@ public class TetrominoBlock : MonoBehaviour
 {
     [HideInInspector] public LetterType letterType;
     public float fallSpeed = 1f;
+
+    // New: assign the layer(s) considered obstacles in the Inspector
+    public LayerMask obstacleLayer;
     
     private int gridX, gridY;
     private float fallTimer;
@@ -30,8 +33,24 @@ public class TetrominoBlock : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.DownArrow)) MoveDown();
     }
 
+    // Raycast helper: returns true if a collider on obstacleLayer is between this block and the adjacent cell in dir.
+    private bool IsBlocked(Vector2 dir)
+    {
+        if (GridManager.Instance == null) return false;
+        float cell = GridManager.Instance.cellSize;
+        // cast almost one cell length to detect obstacles in the neighboring cell
+        float distance = cell * 0.9f;
+        RaycastHit2D hit = Physics2D.Raycast((Vector2)transform.position, dir, distance, obstacleLayer);
+        // Optional: debug draw
+        // Debug.DrawRay(transform.position, dir * distance, hit.collider != null ? Color.red : Color.green, 0.5f);
+        return hit.collider != null;
+    }
+
     public void MoveLeft()
     {
+        // prevent movement if a physics obstacle is to the left
+        if (IsBlocked(Vector2.left)) return;
+
         int newX = gridX - 1;
         if (GridManager.Instance.IsCellEmpty(newX, gridY))
         {
@@ -44,6 +63,9 @@ public class TetrominoBlock : MonoBehaviour
 
     public void MoveRight()
     {
+        // prevent movement if a physics obstacle is to the right
+        if (IsBlocked(Vector2.right)) return;
+
         int newX = gridX + 1;
         if (GridManager.Instance.IsCellEmpty(newX, gridY))
         {
@@ -54,10 +76,10 @@ public class TetrominoBlock : MonoBehaviour
         }
     }
 
-    // 【修改5】下落逻辑：Grid Y值递减（向底部Y=0移动）
+    // Changed: gridY increases to move down (GridManager uses Y=0 at top, larger Y → lower on screen)
     public void MoveDown()
     {
-        int newY = gridY - 1; // Y-1 → 向底部移动
+        int newY = gridY + 1; // Y+1 → move down
         if (GridManager.Instance.IsCellEmpty(gridX, newY))
         {
             GridManager.Instance.RemoveBlock(gridX, gridY);
@@ -74,6 +96,7 @@ public class TetrominoBlock : MonoBehaviour
     private void Land()
     {
         isLanded = true;
+        GetComponent<AudioSource>().Play();
         GridManager.Instance.CheckForElimination();
         if (GridManager.Instance.IsGameOver())
             GameManager.Instance.GameOver();
@@ -83,11 +106,40 @@ public class TetrominoBlock : MonoBehaviour
 
     public void SetGridPosition(int x, int y)
     {
-        GridManager.Instance.UnregisterBlock(gridX, gridY);
+        // Defensive and atomic update:
+        // - Only remove previous mapping if previous coords were in-bounds,
+        //   previous != new coords, and the mapping at previous coords points to this object.
+        // - Ensure the target cell is registered to this object after the update.
+        if (GridManager.Instance != null)
+        {
+            bool prevInBounds = gridX >= 0 && gridX < GridManager.Instance.gridWidth
+                                && gridY >= 0 && gridY < GridManager.Instance.gridHeight;
+        }
+
+        if (GridManager.Instance != null)
+        {
+            bool prevInBounds = gridX >= 0 && gridX < GridManager.Instance.gridWidth
+                                && gridY >= 0 && gridY < GridManager.Instance.gridHeight;
+
+            if (prevInBounds && (gridX != x || gridY != y))
+            {
+                var existing = GridManager.Instance.GetBlockAtGridPosition(gridX, gridY);
+                if (existing == this)
+                    GridManager.Instance.UnregisterBlock(gridX, gridY);
+            }
+        }
+
         gridX = x;
         gridY = y;
-        GridManager.Instance.RegisterBlock(this, x, y);
-        transform.position = GridManager.Instance.GridToWorldPosition(x, gridY);
+
+        // Ensure the target position is registered to this object.
+        if (GridManager.Instance != null)
+        {
+            var existingAtNew = GridManager.Instance.GetBlockAtGridPosition(x, y);
+            if (existingAtNew != this)
+                GridManager.Instance.RegisterBlock(this, x, y);
+            transform.position = GridManager.Instance.GridToWorldPosition(x, gridY);
+        }
     }
 
     public void Initialize(int x, int y, LetterType letter)
@@ -100,13 +152,22 @@ public class TetrominoBlock : MonoBehaviour
         fallTimer = 0;
         isLanded = false;
 
-        // 可选：显示字母
+        // Optional: show letter
         // TextMeshProUGUI text = GetComponentInChildren<TextMeshProUGUI>();
         // if (text != null) text.text = letter.ToString();
     }
 
     private void OnDestroy()
     {
-        GridManager.Instance.UnregisterBlock(gridX, gridY);
+        // Only unregister if the mapping at our stored coords points to this instance.
+        if (GridManager.Instance == null) return;
+
+        bool inBounds = gridX >= 0 && gridX < GridManager.Instance.gridWidth
+                        && gridY >= 0 && gridY < GridManager.Instance.gridHeight;
+        if (!inBounds) return;
+
+        var existing = GridManager.Instance.GetBlockAtGridPosition(gridX, gridY);
+        if (existing == this)
+            GridManager.Instance.UnregisterBlock(gridX, gridY);
     }
 }

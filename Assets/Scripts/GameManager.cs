@@ -12,6 +12,11 @@ public class GameManager : MonoBehaviour
     private int score = 0;      // 当前分数
     private bool isGameOver = false;
 
+    public GameObject[] stars;
+    public GameObject win;
+    public GameObject gift;
+    public GameObject lose;
+
     private void Awake()
     {
         if (Instance == null) Instance = this;
@@ -31,6 +36,15 @@ public class GameManager : MonoBehaviour
         if (isGameOver) return;
         score += points;
         UpdateScoreUI();
+        if (score == 9)
+        {
+            win.SetActive(true);
+            gift.SetActive(true);
+            return;
+        }
+
+        stars[score - 1].SetActive(false);
+        stars[score].SetActive(true);
     }
 
     // 更新分数UI
@@ -45,11 +59,15 @@ public class GameManager : MonoBehaviour
         isGameOver = true;
         gameOverText.gameObject.SetActive(true);
         restartButton.gameObject.SetActive(true);
+        lose.SetActive(true);
+        Invoke("RestartGame", 3f); // 3秒后自动重启
     }
 
     // 重启游戏
     public void RestartGame()
     {
+        if(lose != null)
+            lose.SetActive(false);
         // 重置状态
         score = 0;
         isGameOver = false;
